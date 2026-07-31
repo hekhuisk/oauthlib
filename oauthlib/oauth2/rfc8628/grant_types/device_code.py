@@ -170,6 +170,14 @@ class DeviceCodeGrant(GrantTypeBase):
             request.client_id, request.device_code, request
         )
         if status == self.DEVICE_CODE_AUTHORIZED:
+            # The validator is expected to populate these from the stored
+            # authorization; if it did not, validate_scopes will silently fall
+            # back to the client's default scopes.
+            for attr in ("user", "scopes"):
+                if getattr(request, attr, None) is None:
+                    log.debug(
+                        "request.%s was not set on device_code validation.", attr
+                    )
             return
 
         # A recognized non-authorized status maps to its RFC 8628 polling
