@@ -8,10 +8,14 @@ from oauthlib.oauth2.rfc8628.request_validator import RequestValidator
 
 
 class ErrorResponseTest(TestCase):
-    def set_client(self, request):
+    def set_client(self, request, *args, **kwargs):
+        """Stand in for a validator that attaches the client, as documented."""
         request.client = mock.MagicMock()
-        request.client.client_id = "mocked"
+        request.client.client_id = request.client_id
         return True
+
+    def set_client_id(self, client_id, request, *args, **kwargs):
+        return self.set_client(request)
 
     def build_request(self, uri="https://example.com/device_authorize", client_id="foo"):
         body = ""
@@ -44,6 +48,8 @@ class ErrorResponseTest(TestCase):
         self.validator = mock.MagicMock(spec=RequestValidator)
         self.validator.get_default_redirect_uri.return_value = None
         self.validator.get_code_challenge.return_value = None
+        self.validator.authenticate_client.side_effect = self.set_client
+        self.validator.authenticate_client_id.side_effect = self.set_client_id
         self.device = DeviceApplicationServer(self.validator, "https://example.com/verify")
 
     def test_missing_client_id(self):
@@ -77,12 +83,14 @@ class ErrorResponseTest(TestCase):
 
     def test_unauthenticated_confidential_client(self):
         self.validator.client_authentication_required.return_value = True
+        self.validator.authenticate_client.side_effect = None
         self.validator.authenticate_client.return_value = False
         request = self.build_request()
         self.assert_request_raises(errors.InvalidClientError, request)
 
     def test_unauthenticated_public_client(self):
         self.validator.client_authentication_required.return_value = False
+        self.validator.authenticate_client_id.side_effect = None
         self.validator.authenticate_client_id.return_value = False
         request = self.build_request()
         self.assert_request_raises(errors.InvalidClientError, request)

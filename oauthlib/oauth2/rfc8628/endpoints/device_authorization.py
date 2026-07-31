@@ -10,6 +10,7 @@ import logging
 from typing import Callable
 
 from oauthlib.common import Request, generate_token
+from oauthlib.oauth2.rfc6749 import utils
 from oauthlib.oauth2.rfc6749.endpoints.base import (
     BaseEndpoint,
     catch_errors_and_unavailability,
@@ -153,6 +154,13 @@ class DeviceAuthorizationEndpoint(BaseEndpoint):
               SHOULD wait between polling requests to the token endpoint. If no
               value is provided, clients MUST use 5 as the default.
 
+           scope
+              **OPTIONAL.** The space delimited scopes resolved for this request,
+              either the scopes the device asked for or the ones returned by
+              ``get_default_scopes``. Not defined by RFC 8628, it is included so
+              the caller can persist the authorized scopes with the device_code.
+              Omitted when no scopes were resolved.
+
            **For example:**
 
               .. code-block:: http
@@ -188,6 +196,12 @@ class DeviceAuthorizationEndpoint(BaseEndpoint):
         if self.interval is not None:
             data["interval"] = self.interval
 
+        # ``validate_device_authorization_request`` resolves request.scopes,
+        # falling back to ``get_default_scopes`` when the device omitted the
+        # ``scope`` parameter. Echo the resolved value so callers can persist it
+        # alongside the device_code/user_code without re-running the validator.
+        if request.scopes:
+            data["scope"] = utils.list_to_scope(request.scopes)
 
         verification_uri_complete = self.verification_uri_complete(user_code)
         if verification_uri_complete:

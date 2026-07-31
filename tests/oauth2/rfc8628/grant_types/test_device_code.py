@@ -12,8 +12,12 @@ def create_request(body: str = "") -> common.Request:
     request = common.Request("http://a.b/path", body=body or None)
     request.scopes = ("hello", "world")
     request.expires_in = 1800
-    request.client = "batman"
     request.client_id = "abcdef"
+    # Client authentication must leave request.client set to an object whose
+    # client_id matches request.client_id, otherwise validate_client_confidential
+    # /validate_client_public raise before the grant's own checks run.
+    request.client = mock.Mock()
+    request.client.client_id = request.client_id
     request.code = "1234"
     request.response_type = "code"
     request.grant_type = "urn:ietf:params:oauth:grant-type:device_code"
@@ -73,8 +77,6 @@ def test_custom_pre_and_post_token_validators():
 def test_create_token_response():
     validator = mock.MagicMock()
     request: common.Request = create_request()
-    request.client = mock.Mock()
-    request.client.client_id = request.client_id
     validator.validate_device_code.return_value = DeviceCodeGrant.DEVICE_CODE_AUTHORIZED
 
     auth = DeviceCodeGrant(validator)
@@ -108,7 +110,6 @@ def test_create_token_response():
 def test_invalid_client_authentication_error_confidential_client():
     validator = mock.MagicMock()
     request: common.Request = create_request()
-    request.client = mock.Mock()
 
     auth = DeviceCodeGrant(validator)
     bearer = BearerToken(validator)
@@ -135,7 +136,6 @@ def test_invalid_client_authentication_error_confidential_client():
 def test_invalid_client_authentication_error_public_client():
     validator = mock.MagicMock()
     request: common.Request = create_request()
-    request.client = mock.Mock()
 
     auth = DeviceCodeGrant(validator)
     bearer = BearerToken(validator)
@@ -162,7 +162,6 @@ def test_invalid_client_authentication_error_public_client():
 def test_invalid_grant_type_error():
     validator = mock.MagicMock()
     request: common.Request = create_request()
-    request.client = mock.Mock()
 
     request.grant_type = "not_device_code"
 
@@ -188,7 +187,6 @@ def test_duplicate_params_error():
     request: common.Request = create_request(
         "client_id=123&scope=openid&scope=openid"
     )
-    request.client = mock.Mock()
 
     auth = DeviceCodeGrant(validator)
     bearer = BearerToken(validator)
@@ -208,7 +206,7 @@ def test_duplicate_params_error():
 
 
 @pytest.mark.parametrize(
-    "status, expected_error",
+    ("status", "expected_error"),
     [
         (DeviceCodeGrant.DEVICE_CODE_PENDING, "authorization_pending"),
         (DeviceCodeGrant.DEVICE_CODE_SLOW_DOWN, "slow_down"),
@@ -219,13 +217,12 @@ def test_duplicate_params_error():
 def test_device_code_status_errors(status, expected_error):
     validator = mock.MagicMock()
     request: common.Request = create_request()
-    request.client = mock.Mock()
     validator.validate_device_code.return_value = status
 
     auth = DeviceCodeGrant(validator)
     bearer = BearerToken(validator)
 
-    headers, body, status_code = auth.create_token_response(request, bearer)
+    _headers, body, status_code = auth.create_token_response(request, bearer)
     body = json.loads(body)
 
     assert body == {"error": expected_error}
@@ -248,13 +245,12 @@ def test_device_code_status_errors(status, expected_error):
 def test_invalid_device_code(status):
     validator = mock.MagicMock()
     request: common.Request = create_request()
-    request.client = mock.Mock()
     validator.validate_device_code.return_value = status
 
     auth = DeviceCodeGrant(validator)
     bearer = BearerToken(validator)
 
-    headers, body, status_code = auth.create_token_response(request, bearer)
+    _headers, body, status_code = auth.create_token_response(request, bearer)
     body = json.loads(body)
 
     assert body == {"error": "invalid_grant"}
@@ -274,7 +270,6 @@ def test_device_code_scopes_populated_before_scope_validation():
     """
     validator = mock.MagicMock()
     request: common.Request = create_request()
-    request.client = mock.Mock()
     # The device token request has no scope of its own.
     request.scope = None
     request.scopes = None
@@ -313,13 +308,12 @@ def test_validate_device_code_is_required_on_real_validator():
 def test_missing_device_code():
     validator = mock.MagicMock()
     request: common.Request = create_request()
-    request.client = mock.Mock()
     request.device_code = None
 
     auth = DeviceCodeGrant(validator)
     bearer = BearerToken(validator)
 
-    headers, body, status_code = auth.create_token_response(request, bearer)
+    _headers, body, status_code = auth.create_token_response(request, bearer)
     body = json.loads(body)
 
     assert body == {
