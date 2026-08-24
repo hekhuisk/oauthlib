@@ -173,11 +173,15 @@ class DeviceCodeGrant(GrantTypeBase):
             # The validator is expected to populate these from the stored
             # authorization; if it did not, validate_scopes will silently fall
             # back to the client's default scopes.
-            for attr in ("user", "scopes"):
-                if getattr(request, attr, None) is None:
-                    log.debug(
-                        "request.%s was not set on device_code validation.", attr
-                    )
+            if getattr(request, "user", None) is None:
+                log.debug("request.user was not set on device_code validation.")
+            if getattr(request, "scopes", None) is None and request.scope is None:
+                raise rfc6749_errors.ServerError(
+                    description="validate_device_code must set request.scopes for an authorized device_code.",
+                    request=request,
+                )
+            if getattr(request, "scopes", None) is None:
+                log.debug("request.scopes was not set on device_code validation.")
             return
 
         # A recognized non-authorized status maps to its RFC 8628 polling
