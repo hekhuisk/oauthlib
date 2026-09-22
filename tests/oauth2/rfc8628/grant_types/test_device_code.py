@@ -290,6 +290,44 @@ def test_device_code_scopes_populated_before_scope_validation():
     )
 
 
+def test_device_code_authorized_without_scopes_fails_loudly():
+    """An authorized device_code must not silently fall back to default scopes.
+
+    If ``validate_device_code`` returns ``DEVICE_CODE_AUTHORIZED`` without
+    populating ``request.scopes`` (and the token request itself carries no
+    ``scope``), failing loudly with a ``server_error`` is the only safe
+    option: continuing would let ``validate_scopes`` fall back to
+    ``get_default_scopes`` and reintroduce the consent-integrity bug from
+    issue #944.
+    """
+    validator = mock.MagicMock()
+    request: common.Request = create_request()
+    # The device token request has no scope of its own, and the validator
+    # forgets to set request.scopes on the authorized device_code.
+    request.scope = None
+    request.scopes = None
+    validator.validate_device_code.return_value = DeviceCodeGrant.DEVICE_CODE_AUTHORIZED
+
+    auth = DeviceCodeGrant(validator)
+    bearer = BearerToken(validator)
+
+    _headers, body, status_code = auth.create_token_response(request, bearer)
+    body = json.loads(body)
+
+    assert body == {
+        "error": "server_error",
+        "error_description": (
+            "validate_device_code must set request.scopes for an "
+            "authorized device_code."
+        ),
+    }
+    assert status_code == 400
+
+    validator.get_default_scopes.assert_not_called()
+    validator.validate_scopes.assert_not_called()
+    validator.save_token.assert_not_called()
+
+
 def test_validate_device_code_is_required_on_real_validator():
     """The hook lives on the rfc8628 RequestValidator and must be implemented.
 
